@@ -1,0 +1,428 @@
+import React, { useState, useEffect, useCallback } from 'react';
+
+const RotinFamiliarApp = () => {
+  // Estado principal
+  const [currentDay, setCurrentDay] = useState(null);
+  const [tasks, setTasks] = useState({});
+  const [history, setHistory] = useState({});
+  const [timerActive, setTimerActive] = useState(null);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [darkMode, setDarkMode] = useState(false);
+  const [notes, setNotes] = useState({});
+
+  // Definição de tarefas da rotina
+  const ROUTINE = {
+    Segunda: {
+      'Cozinha + louça': { person: 'você', meta: 75 },
+      'Dever + sala': { person: 'esposa', meta: 60 },
+      'Guardar brinquedos': { person: 'filho', meta: 15 }
+    },
+    Terça: {
+      'Dever + banheiro': { person: 'você', meta: 45 },
+      'Cozinha': { person: 'esposa', meta: 60 },
+      'Lixo': { person: 'filho', meta: 5 }
+    },
+    Quarta: {
+      'Cozinha + louça': { person: 'você', meta: 75 },
+      'Dever + quartos': { person: 'esposa', meta: 60 },
+      'Itens pessoais': { person: 'filho', meta: 10 }
+    },
+    Quinta: {
+      'Roupa (lavar + secar)': { person: 'você', meta: 90 },
+      'Cozinha': { person: 'esposa', meta: 60 },
+      'Lixo': { person: 'filho', meta: 5 }
+    },
+    Sexta: {
+      'Cozinha + louça': { person: 'você', meta: 75 },
+      'Dever + organização': { person: 'esposa', meta: 75 },
+      'Organização pessoal': { person: 'filho', meta: 15 }
+    }
+  };
+
+  const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
+  const PERSON_COLORS = {
+    você: '#378ADD',
+    esposa: '#D4537E',
+    filho: '#639922'
+  };
+
+  // Carregar dados do localStorage (persistência)
+  useEffect(() => {
+    try {
+      const savedTasks = window.localStorage?.getItem('rotina_tasks');
+      const savedHistory = window.localStorage?.getItem('rotina_history');
+      const savedNotes = window.localStorage?.getItem('rotina_notes');
+      
+      if (savedTasks) setTasks(JSON.parse(savedTasks));
+      if (savedHistory) setHistory(JSON.parse(savedHistory));
+      if (savedNotes) setNotes(JSON.parse(savedNotes));
+      
+      // Definir dia atual
+      const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long' }).capitalize();
+      const dayName = DAYS.find(d => today.includes(d.toLowerCase())) || DAYS[0];
+      setCurrentDay(dayName);
+    } catch (e) {
+      console.log('Erro ao carregar dados');
+      setCurrentDay(DAYS[0]);
+    }
+  }, []);
+
+  // Salvar tarefas no localStorage
+  useEffect(() => {
+    try {
+      window.localStorage?.setItem('rotina_tasks', JSON.stringify(tasks));
+    } catch (e) {}
+  }, [tasks]);
+
+  useEffect(() => {
+    try {
+      window.localStorage?.setItem('rotina_history', JSON.stringify(history));
+    } catch (e) {}
+  }, [history]);
+
+  useEffect(() => {
+    try {
+      window.localStorage?.setItem('rotina_notes', JSON.stringify(notes));
+    } catch (e) {}
+  }, [notes]);
+
+  // Timer
+  useEffect(() => {
+    if (!timerActive) return;
+    const interval = setInterval(() => {
+      setTimerSeconds(s => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timerActive]);
+
+  const formatTime = (sec) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const toggleTask = (day, task) => {
+    setTasks(prev => ({
+      ...prev,
+      [day]: {
+        ...(prev[day] || {}),
+        [task]: !prev[day]?.[task]
+      }
+    }));
+  };
+
+  const startTimer = (day, task) => {
+    if (timerActive === `${day}-${task}`) {
+      setTimerActive(null);
+      // Salvar tempo real no histórico
+      setHistory(prev => ({
+        ...prev,
+        [`${day}-${task}`]: timerSeconds
+      }));
+    } else {
+      setTimerActive(`${day}-${task}`);
+      setTimerSeconds(0);
+    }
+  };
+
+  const getDayProgress = (day) => {
+    const dayTasks = ROUTINE[day];
+    const completed = Object.values(dayTasks || {}).filter((_,idx) => tasks[day]?.[Object.keys(dayTasks)[idx]]).length;
+    return { completed, total: Object.keys(dayTasks || {}).length };
+  };
+
+  const getWeekProgress = () => {
+    let totalCompleted = 0;
+    let totalTasks = 0;
+    DAYS.forEach(day => {
+      const { completed, total } = getDayProgress(day);
+      totalCompleted += completed;
+      totalTasks += total;
+    });
+    return Math.round((totalCompleted / totalTasks) * 100);
+  };
+
+  const getTimeProgress = (day, task) => {
+    const meta = ROUTINE[day]?.[task]?.meta || 60;
+    const real = history[`${day}-${task}`] || 0;
+    const minutes = Math.round(real / 60);
+    const percent = Math.round((minutes / meta) * 100);
+    return { minutes, meta, percent: Math.min(percent, 100) };
+  };
+
+  return (
+    <div style={{
+      background: darkMode ? '#1a1a1a' : '#ffffff',
+      color: darkMode ? '#e0e0e0' : '#1a1a1a',
+      minHeight: '100vh',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      padding: '16px',
+      transition: 'background 0.3s'
+    }}>
+      
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '24px',
+        paddingBottom: '16px',
+        borderBottom: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`
+      }}>
+        <div>
+          <h1 style={{ margin: '0 0 4px', fontSize: '24px', fontWeight: 600 }}>🏠 Rotina Familiar</h1>
+          <p style={{ margin: 0, fontSize: '13px', color: darkMode ? '#999' : '#666' }}>Semana em Progresso</p>
+        </div>
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          style={{
+            background: darkMode ? '#333' : '#f0f0f0',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            cursor: 'pointer',
+            fontSize: '18px'
+          }}
+        >
+          {darkMode ? '☀️' : '🌙'}
+        </button>
+      </div>
+
+      {/* Progresso Semanal */}
+      <div style={{
+        background: darkMode ? '#2a2a2a' : '#f8f8f8',
+        borderRadius: '12px',
+        padding: '16px',
+        marginBottom: '24px',
+        border: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <span style={{ fontSize: '14px', fontWeight: 500 }}>Progresso Semanal</span>
+          <span style={{ fontSize: '18px', fontWeight: 600, color: '#639922' }}>{getWeekProgress()}%</span>
+        </div>
+        <div style={{
+          background: darkMode ? '#444' : '#e0e0e0',
+          borderRadius: '8px',
+          height: '8px',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            background: 'linear-gradient(90deg, #639922, #0F6E56)',
+            height: '100%',
+            width: `${getWeekProgress()}%`,
+            transition: 'width 0.3s'
+          }} />
+        </div>
+      </div>
+
+      {/* Seletor de Dias */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+        gap: '8px',
+        marginBottom: '24px'
+      }}>
+        {DAYS.map(day => {
+          const { completed, total } = getDayProgress(day);
+          const isSelected = day === currentDay;
+          return (
+            <button
+              key={day}
+              onClick={() => setCurrentDay(day)}
+              style={{
+                background: isSelected ? '#378ADD' : (darkMode ? '#333' : '#f0f0f0'),
+                color: isSelected ? '#fff' : (darkMode ? '#e0e0e0' : '#1a1a1a'),
+                border: `1px solid ${isSelected ? '#378ADD' : (darkMode ? '#444' : '#ddd')}`,
+                borderRadius: '8px',
+                padding: '12px 8px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontSize: '12px',
+                fontWeight: 500
+              }}
+            >
+              <div>{day.slice(0, 3)}</div>
+              <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '4px' }}>{completed}/{total}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tarefas do Dia */}
+      {currentDay && (
+        <div style={{ display: 'grid', gap: '12px' }}>
+          {Object.entries(ROUTINE[currentDay] || {}).map(([task, info]) => {
+            const isCompleted = tasks[currentDay]?.[task] || false;
+            const isRunning = timerActive === `${currentDay}-${task}`;
+            const { minutes, meta, percent } = getTimeProgress(currentDay, task);
+
+            return (
+              <div
+                key={task}
+                style={{
+                  background: darkMode ? '#2a2a2a' : '#fff',
+                  border: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`,
+                  borderRadius: '12px',
+                  padding: '16px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {/* Header */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  marginBottom: '12px'
+                }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: 600 }}>
+                      {task}
+                    </h3>
+                    <p style={{
+                      margin: 0,
+                      fontSize: '12px',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      display: 'inline-block',
+                      background: darkMode ? '#444' : '#f0f0f0',
+                      color: darkMode ? '#bbb' : '#666'
+                    }}>
+                      {info.person === 'você' ? '👨' : info.person === 'esposa' ? '👩' : '👦'} {info.person}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleTask(currentDay, task)}
+                    style={{
+                      background: isCompleted ? '#639922' : (darkMode ? '#444' : '#e0e0e0'),
+                      border: 'none',
+                      borderRadius: '8px',
+                      width: '40px',
+                      height: '40px',
+                      cursor: 'pointer',
+                      fontSize: '20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {isCompleted ? '✓' : '○'}
+                  </button>
+                </div>
+
+                {/* Meta + Real */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '13px',
+                  marginBottom: '8px',
+                  color: darkMode ? '#bbb' : '#666'
+                }}>
+                  <span>⏱ Meta: {info.meta} min</span>
+                  <span>Real: {minutes} min</span>
+                </div>
+
+                {/* Barra de Progresso */}
+                <div style={{
+                  background: darkMode ? '#444' : '#e0e0e0',
+                  borderRadius: '6px',
+                  height: '6px',
+                  overflow: 'hidden',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{
+                    background: percent > 100 ? '#E24B4A' : '#0F6E56',
+                    height: '100%',
+                    width: `${Math.min(percent, 100)}%`,
+                    transition: 'width 0.3s'
+                  }} />
+                </div>
+
+                {/* Timer */}
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  alignItems: 'center'
+                }}>
+                  <button
+                    onClick={() => startTimer(currentDay, task)}
+                    style={{
+                      background: isRunning ? '#E24B4A' : '#378ADD',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      transition: 'all 0.2s',
+                      flex: 1
+                    }}
+                  >
+                    {isRunning ? '⏹ Parar' : '▶ Timer'}
+                  </button>
+                  <div style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    minWidth: '50px',
+                    textAlign: 'center',
+                    color: isRunning ? '#378ADD' : (darkMode ? '#bbb' : '#666')
+                  }}>
+                    {formatTime(isRunning ? timerSeconds : (history[`${currentDay}-${task}`] || 0))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Anotações */}
+          <div style={{
+            background: darkMode ? '#2a2a2a' : '#fff',
+            border: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`,
+            borderRadius: '12px',
+            padding: '16px'
+          }}>
+            <label style={{ fontSize: '13px', fontWeight: 500, display: 'block', marginBottom: '8px' }}>
+              📝 Anotação do Dia
+            </label>
+            <textarea
+              value={notes[currentDay] || ''}
+              onChange={(e) => setNotes(prev => ({ ...prev, [currentDay]: e.target.value }))}
+              placeholder="Ex: Segunda ficou pesada, roupa acumulou..."
+              style={{
+                width: '100%',
+                borderRadius: '8px',
+                border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
+                padding: '12px',
+                fontSize: '14px',
+                background: darkMode ? '#1a1a1a' : '#fafafa',
+                color: darkMode ? '#e0e0e0' : '#1a1a1a',
+                resize: 'vertical',
+                minHeight: '80px',
+                fontFamily: 'inherit'
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Footer Estatísticas */}
+      <div style={{
+        marginTop: '32px',
+        paddingTop: '16px',
+        borderTop: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`,
+        textAlign: 'center',
+        fontSize: '12px',
+        color: darkMode ? '#999' : '#666'
+      }}>
+        <p>Sincronizado automaticamente • Compartilhe este link com sua esposa</p>
+      </div>
+    </div>
+  );
+};
+
+String.prototype.capitalize = function() {
+  return this.charAt(0).toUpperCase() + this.slice(1);
+};
+
+export default RotinFamiliarApp;
